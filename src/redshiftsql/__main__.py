@@ -60,6 +60,10 @@ def _parse_command_line_arguments():
         type=int,
         help='The Redshift cluster port to connect to'
     )
+    argv_parser.add_argument(
+        '--file',
+        help='The file of commands to upload (replaces stdin)'
+    )
 
     return argv_parser.parse_args()
 
@@ -84,6 +88,14 @@ def get_user_password(args):
     return credentials['DbUser'], credentials['DbPassword']
 
 
+def execute_command(cursor, command):
+    print('Executing: {}'.format(command))
+    cursor.execute(command)
+    print('Results:')
+    for record in cursor:
+        print(record)
+
+
 def main():
     try:
         args = _parse_command_line_arguments()
@@ -103,12 +115,13 @@ def main():
                 port=args.port
         ) as redshift_connection:
             with redshift_connection.cursor() as cursor:
-                for command in sys.stdin:
-                    print('Executing: {}'.format(command))
-                    cursor.execute(command)
-                    print('Results:')
-                    for record in cursor:
-                        print(record)
+                if not args.file:
+                    for command in sys.stdin:
+                        execute_command(cursor, command)
+                else:
+                    with open(args.file, 'r') as commands:
+                        for command in commands:
+                            execute_command(cursor, command)
 
     except psycopg2.OperationalError as oe:
         print('Database error:', oe.message, file=sys.stderr)
