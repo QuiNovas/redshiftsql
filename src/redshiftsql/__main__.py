@@ -4,20 +4,15 @@ import argparse
 import atexit
 import boto3
 import os
-import socket
+import psycopg2
 import sys
-import logging.config
+import logging
 
 from botocore.client import Config
-from illumicare.config_parsers import S3ConfigParser
-from paramiko import RSAKey, Transport, SFTPServer
-from paramiko.ssh_exception import SSHException
-from uploader_server import UploaderServer
-from uploader_sftpserver import UploaderSFTPServer
 
 
 if sys.argv[0].endswith("__main__.py"):
-    sys.argv[0] = "python -m redshift-sql"
+    sys.argv[0] = "python -m redshiftsql"
 
 
 @atexit.register
@@ -27,68 +22,103 @@ def app_exit():
 
 def _parse_command_line_arguments():
     argv_parser = argparse.ArgumentParser()
-    argv_parser.add_argument('--log-config',
-                             metavar='log_config.ini',
-                             required=True,
-                             help='The logging ini file')
-    argv_parser.add_argument('--aws-environment',
-                             help='The IllumiCare environment we are running in. Used in path to terraform.ini')
-    argv_parser.add_argument('--config-bucket',
-                             help='The IllumiCare config bucket to read the ini\'s from')
-    argv_parser.add_argument('--rsa-keyfile',
-                             required=True,
-                             help='The rsa private key to use for this sftp server')
+    argv_parser.add_argument(
+        'host',
+        help='The Redhshift cluster endpoint address to connect to'
+    )
+    argv_parser.add_argument(
+        'dbname',
+        help='The name of the Redshift DB to connect to'
+    )
+    argv_parser.add_argument(
+        'user',
+        help='The Redshift user to use to connect'
+    )
+    argv_parser.add_argument(
+        '--password',
+        help='The Redshift password to use to connect'
+    )
+    iam_group = argv_parser.add_argument_group(
+        title='IAM credentials',
+        description='IAM credentials for temporary Redshift credentials'
+    )
+    iam_group.add_argument(
+        '--aws-access-key-id',
+        help='The AWS IAM Access Key ID to use'
+    )
+    iam_group.add_argument(
+        '--aws-secret-key',
+        help='The AWS IAM Secret Key to use'
+    )
+    iam_group.add_argument(
+        '--cluster-name',
+        help='The Redshift cluster name (identifier)'
+    )
+    argv_parser.add_argument(
+        '--port',
+        default=5439,
+        type=int,
+        help='The Redshift cluster port to connect to'
+    )
+
     return argv_parser.parse_args()
+
+
+def get_user_password(args):
+    if not args.aws_access_key_id:
+        print('Using user {} and password for direct Redshift access'.format(args.user))
+        return args.user, args.password
+    print('Found AWS Access Key Id {}, obtaining temporary credentials'.format(args.aws_access_key_id))
+    redshift = boto3.client(
+        'redshift',
+        aws_access_key_id=args.aws_access_key_id,
+        aws_secret_access_key=args.aws_secret_key,
+        config=Config(signature_version='s3v4')
+    )
+    credentials = redshift.get_cluster_credentials(
+        ClusterIdentifier=args.cluster_name,
+        DbName=args.dbname,
+        DbUser=args.user
+    )
+    print('Using user {} and temporary password for Redshift access'.format(credentials['DbUser']))
+    return credentials['DbUser'], credentials['DbPassword']
 
 
 def main():
     try:
         args = _parse_command_line_arguments()
 
-        # configures logging for the application
-        logging.config.fileConfig(args.log_config)
-
         # set AWS logging level
         logging.getLogger('botocore').setLevel(logging.ERROR)
         logging.getLogger('boto3').setLevel(logging.ERROR)
 
-        if not args.config_bucket:
-            args.config_bucket = os.environ['CONFIG_BUCKET']
+        (user, password) = get_user_password(args)
 
-        if not args.aws_environment:
-            args.aws_environment = os.environ['AWS_ENVIRONMENT']
+        print('Connecting to database {} on {}:{}'.format(args.dbname, args.host, args.port))
+        with psycopg2.connect(
+                dbname=args.dbname,
+                user=user,
+                password=password,
+                host=args.host,
+                port=args.port
+        ) as redshift_connection:
+            with redshift_connection.cursor() as cursor:
+                for command in sys.stdin:
+                    print('Executing: {}'.format(command))
+                    cursor.execute(command)
+                    print('Results:')
+                    for record in cursor:
+                        print(record)
 
-        config = S3ConfigParser()
-        config.read_s3(args.config_bucket, 'ini/{}/terraform.ini'.format(args.aws_environment))
-        config.read_s3(args.config_bucket, 'ini/{}/uploader_app_config.ini'.format(args.aws_environment))
-
-        logger = logging.getLogger()
-
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_socket.bind(('0.0.0.0', 22))
-        server_socket.listen(10)
-
-        logger.info('Listening on {}:{}'.format('0.0.0.0', 22))
-
-        s3 = boto3.client('s3', config=Config(signature_version='s3v4'))
-
-        while True:
-            (connection, address) = server_socket.accept()
-            logger.debug('Incoming connection from {}'.format(address))
-            transport = Transport(connection)
-            transport.add_server_key(RSAKey.from_private_key_file(args.rsa_keyfile))
-            transport.set_subsystem_handler('sftp', SFTPServer, UploaderSFTPServer)
-            try:
-                transport.start_server(server=UploaderServer(s3, config))
-                logger.info('Established SSH connection with address {}'.format(address))
-            except SSHException:
-                logger.exception('SSH connection from address {} failed'.format(address))
-
+    except psycopg2.OperationalError as oe:
+        print('Database error:', oe.message, file=sys.stderr)
+        print('')
+        raise oe
     except KeyboardInterrupt:
         print("Service interrupted", file=sys.stderr)
 
     except Exception as e:
-        print("Initialization FAILED: ", e.message, file=sys.stderr)
+        print('Initialization FAILED:', e.message, file=sys.stderr)
         print('')
         raise e
 
