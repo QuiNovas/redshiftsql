@@ -88,12 +88,14 @@ def get_user_password(args):
 
 
 def execute_command(cursor, command):
-    print('Executing: {}'.format(command))
-    cursor.execute(command)
-    if cursor.rowcount > 0:
-        print('Results:')
-        for record in cursor:
-            print(record)
+    command = command.strip()
+    if command:
+        print('Executing: {}'.format(command))
+        cursor.execute(command)
+        if cursor.rowcount > 0:
+            print('Results:')
+            for record in cursor:
+                print(record)
 
 
 def main():
