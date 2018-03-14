@@ -140,3 +140,4 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+README.rst
