@@ -3,7 +3,6 @@ from __future__ import print_function
 import argparse
 import atexit
 import boto3
-import os
 import psycopg2
 import sys
 import logging
@@ -91,9 +90,10 @@ def get_user_password(args):
 def execute_command(cursor, command):
     print('Executing: {}'.format(command))
     cursor.execute(command)
-    print('Results:')
-    for record in cursor:
-        print(record)
+    if cursor.rowcount > 0:
+        print('Results:')
+        for record in cursor:
+            print(record)
 
 
 def main():
