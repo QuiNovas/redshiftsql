@@ -61,6 +61,11 @@ def _parse_command_line_arguments():
         help='The Redshift cluster name (identifier)'
     )
     argv_parser.add_argument(
+        '--region',
+        default='us-east-1',
+        help='The region that the Redshift cluster is in'
+    )
+    argv_parser.add_argument(
         '--port',
         default=5439,
         type=int,
@@ -79,7 +84,10 @@ def get_user_password(args):
         'redshift',
         aws_access_key_id=args.aws_access_key_id,
         aws_secret_access_key=args.aws_secret_key,
-        config=Config(signature_version='s3v4')
+        config=Config(
+            region_name=args.region,
+            signature_version='s3v4'
+        )
     )
     credentials = redshift.get_cluster_credentials(
         ClusterIdentifier=args.cluster_name,

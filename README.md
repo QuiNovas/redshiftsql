@@ -37,6 +37,7 @@ python -m redshiftsql host dbname user file --aws-access-key-id aws-access-key-i
 - **user** The Redshift user
 - **password** The Redshift password. Ignored if **aws-access-key-id** is present
 - **port** The port on the **host**. Defaults to _5439_
+- **region** The region that the Redshift cluster is in. Defaults to _us-east-1_
 - **file** The file to read the SQL commands from
 - **aws-access-key-id** The AWS Access Key ID for the IAM user to obtain temporary credentials
 - **aws-secret-key** The AWS Secret Key for the IAM user to obtain temporary credentials
