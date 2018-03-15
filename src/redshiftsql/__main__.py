@@ -104,10 +104,6 @@ def execute_command(cursor, command):
         command = command + ';'
         print('Executing: {}'.format(command))
         cursor.execute(command)
-        if cursor.rowcount > 0:
-            print('Results:')
-            for record in cursor:
-                print(record)
 
 
 def main():
