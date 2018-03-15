@@ -100,7 +100,7 @@ def get_user_password(args):
 
 def execute_command(cursor, command):
     command = spaces_regex.sub(' ', nl_tabs_regex.sub(' ', command)).strip()
-    if command:
+    if command and not command.startswith('--'):
         command = command + ';'
         print('Executing: {}'.format(command))
         cursor.execute(command)
