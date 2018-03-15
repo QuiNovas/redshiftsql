@@ -12,17 +12,24 @@ credentials from the database. For example:
   "Statement": {
     "Effect": "Allow",
     "Action": "redshift:GetClusterCredentials",
-    "Resource": "arn:aws:redshift:us-west-2:123456789012:dbuser:examplecluster/temp_creds_user"
+    "Resource": [
+      "arn:aws:redshift:us-west-2:123456789012:dbuser:examplecluster/temp_creds_user",
+      "arn:aws:redshift:us-west-2:123456789012:dbname:examplecluster/dev_database"
+    ]
   }
 }
 ```
 
 ###Usage
-python -m redshiftsql <host> <dbname> <user> --password <password> --port <port> --file <file>
+```
+python -m redshiftsql host dbname user file --password password --port port
+```
 
 **OR**
 
-python -m redshiftsql <host> <dbname> <user> --aws-access-key-id <aws-access-key-id> --aws-secret-key <aws-secret-key> --cluster-name <cluster-name> --port <port> --file <file>
+```
+python -m redshiftsql host dbname user file --aws-access-key-id aws-access-key-id --aws-secret-key aws-secret-key --cluster-name cluster-name --port port
+```
 
 ###Arguments
 - **host** The Redshift endpoint, minus the port
@@ -30,7 +37,7 @@ python -m redshiftsql <host> <dbname> <user> --aws-access-key-id <aws-access-key
 - **user** The Redshift user
 - **password** The Redshift password. Ignored if **aws-access-key-id** is present
 - **port** The port on the **host**. Defaults to _5439_
-- **file** The file to read the SQL commands from. If not present, the commands will be read from _stdin_
+- **file** The file to read the SQL commands from
 - **aws-access-key-id** The AWS Access Key ID for the IAM user to obtain temporary credentials
 - **aws-secret-key** The AWS Secret Key for the IAM user to obtain temporary credentials
 - **cluster-name** The Redshift cluster name to obtain temporary credentials from

@@ -4,6 +4,7 @@ import argparse
 import atexit
 import boto3
 import psycopg2
+import re
 import sys
 import logging
 
@@ -12,6 +13,8 @@ from botocore.client import Config
 
 if sys.argv[0].endswith("__main__.py"):
     sys.argv[0] = "python -m redshiftsql"
+nl_tabs_regex = re.compile(r"[\n\t]")
+spaces_regex = re.compile(r"/s{2,}")
 
 
 @atexit.register
@@ -32,6 +35,10 @@ def _parse_command_line_arguments():
     argv_parser.add_argument(
         'user',
         help='The Redshift user to use to connect'
+    )
+    argv_parser.add_argument(
+        'file',
+        help='The file of commands to upload'
     )
     argv_parser.add_argument(
         '--password',
@@ -59,10 +66,6 @@ def _parse_command_line_arguments():
         type=int,
         help='The Redshift cluster port to connect to'
     )
-    argv_parser.add_argument(
-        '--file',
-        help='The file of commands to upload (replaces stdin)'
-    )
 
     return argv_parser.parse_args()
 
@@ -88,8 +91,9 @@ def get_user_password(args):
 
 
 def execute_command(cursor, command):
-    command = command.strip()
+    command = spaces_regex.sub(' ', nl_tabs_regex.sub(' ', command)).strip()
     if command:
+        command = command + ';'
         print('Executing: {}'.format(command))
         cursor.execute(command)
         if cursor.rowcount > 0:
@@ -108,6 +112,10 @@ def main():
 
         (user, password) = get_user_password(args)
 
+        with open(args.file, 'r') as commands_file:
+            commands_content = commands_file.read()
+        commands = commands_content.split(';')
+
         print('Connecting to database {} on {}:{}'.format(args.dbname, args.host, args.port))
         with psycopg2.connect(
                 dbname=args.dbname,
@@ -117,13 +125,8 @@ def main():
                 port=args.port
         ) as redshift_connection:
             with redshift_connection.cursor() as cursor:
-                if not args.file:
-                    for command in sys.stdin:
-                        execute_command(cursor, command)
-                else:
-                    with open(args.file, 'r') as commands:
-                        for command in commands:
-                            execute_command(cursor, command)
+                for command in commands:
+                    execute_command(cursor, command)
 
     except psycopg2.OperationalError as oe:
         print('Database error:', oe.message, file=sys.stderr)
